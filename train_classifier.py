@@ -13,28 +13,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, models, transforms
 
-
-# Daftar pre-trained model yang tersedia
-AVAILABLE_MODELS = {
-    "resnet18": models.resnet18,
-    "resnet34": models.resnet34,
-    "resnet50": models.resnet50,
-    "resnet101": models.resnet101,
-    "vgg16": models.vgg16,
-    "vgg19": models.vgg19,
-    "alexnet": models.alexnet,
-    "squeezenet1_0": models.squeezenet1_0,
-    "densenet121": models.densenet121,
-    "densenet169": models.densenet169,
-    "inception_v3": models.inception_v3,
-    "googlenet": models.googlenet,
-    "mobilenet_v2": models.mobilenet_v2,
-    "mobilenet_v3_small": models.mobilenet_v3_small,
-    "mobilenet_v3_large": models.mobilenet_v3_large,
-    "efficientnet_b0": models.efficientnet_b0,
-    "efficientnet_b1": models.efficientnet_b1,
-    "efficientnet_b2": models.efficientnet_b2,
-}
+from models_config import AVAILABLE_MODELS
 
 
 def get_model(model_name: str, num_classes: int, pretrained: bool = True):
@@ -228,6 +207,7 @@ def train(
     image_size: int = 224,
     output_dir: str = "output",
     save_best_only: bool = True,
+    callback=None,
 ):
     """
     Training model klasifikasi gambar.
@@ -303,7 +283,8 @@ def train(
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
     # Callback
-    callback = TrainingCallback(epochs)
+    if callback is None:
+        callback = TrainingCallback(epochs)
     callback.on_train_begin(len(train_loader))
 
     # Training loop
