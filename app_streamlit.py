@@ -11,6 +11,7 @@ from pathlib import Path
 import streamlit as st
 
 from models_config import get_model_names
+from inference import predict
 from train_classifier import train
 from utils import preprocess_dir_name
 
@@ -137,9 +138,9 @@ def main():
             st.session_state.project_title = project_title
             st.session_state.dataset_path = dataset_path
 
-    # --- Main: Title Project ---
-    st.title("📁 AI Trainer - Dataset Builder")
-    st.markdown("Buat dataset untuk training model klasifikasi gambar dengan custom label.")
+    # --- Main: Title & Tabs ---
+    st.title("📁 AI Trainer")
+    st.markdown("Dataset builder, training, dan inferensi model klasifikasi gambar.")
 
     if not project_title or not project_title.strip():
         st.warning("⚠️ Masukkan **Judul Project** di sidebar untuk memulai.")
@@ -155,6 +156,16 @@ def main():
     dataset_path = get_dataset_dir(project_title)
     dataset_path.mkdir(parents=True, exist_ok=True)
 
+    tab_dataset, tab_inference = st.tabs(["📁 Dataset & Training", "🔮 Inferensi"])
+
+    with tab_dataset:
+        _render_dataset_tab(dataset_path, project_title)
+    with tab_inference:
+        _render_inference_tab(project_title)
+
+
+def _render_dataset_tab(dataset_path, project_title):
+    """Render tab Dataset & Training."""
     # --- Custom Label Section ---
     st.subheader("🏷️ Custom Label")
 
@@ -315,6 +326,98 @@ def main():
                 st.session_state.last_best_acc = best_acc
                 st.success(f"✅ Model disimpan ke `{output_dir / 'best_model.pt'}`")
                 st.balloons()
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+                st.exception(e)
+
+
+def _render_inference_tab(project_title):
+    """Render tab Inferensi."""
+    st.subheader("🔮 Inferensi Model")
+    st.markdown("Upload gambar untuk prediksi menggunakan model yang sudah dilatih.")
+
+    # Daftar model yang tersedia (dari outputs/)
+    available_models = []
+    if BASE_OUTPUT_DIR.exists():
+        for project_dir in BASE_OUTPUT_DIR.iterdir():
+            if project_dir.is_dir():
+                checkpoint = project_dir / "best_model.pt"
+                label_mapping = project_dir / "label_mapping.json"
+                if checkpoint.exists() and label_mapping.exists():
+                    available_models.append((str(checkpoint), str(label_mapping), project_dir.name))
+
+    # Pilih model
+    model_path = None
+    label_mapping_path = None
+    if available_models:
+        options = [f"{name}" for _, _, name in available_models]
+        default_idx = 0
+        if project_title:
+            dir_name = preprocess_dir_name(project_title)
+            for i, (_, _, name) in enumerate(available_models):
+                if name == dir_name:
+                    default_idx = i
+                    break
+
+        selected = st.selectbox(
+            "Pilih model (project)",
+            options=options,
+            index=default_idx,
+            help="Model dari project yang sudah dilatih",
+        )
+        idx = options.index(selected)
+        model_path = available_models[idx][0]
+        label_mapping_path = available_models[idx][1]
+    else:
+        st.info("Belum ada model. Training dulu di tab Dataset & Training, atau gunakan path manual.")
+        col_mp, col_lm = st.columns(2)
+        with col_mp:
+            manual_model = st.text_input(
+                "Path model",
+                placeholder="outputs/nama_project/best_model.pt",
+            )
+        with col_lm:
+            manual_label = st.text_input(
+                "Path label mapping",
+                placeholder="outputs/nama_project/label_mapping.json",
+            )
+        model_path = manual_model.strip() if manual_model else None
+        label_mapping_path = manual_label.strip() if manual_label else None
+
+    # Upload gambar
+    infer_image = st.file_uploader(
+        "Upload gambar untuk prediksi",
+        type=["jpg", "jpeg", "png", "bmp", "gif", "webp"],
+        key="infer_uploader",
+    )
+
+    top_k = st.slider("Jumlah prediksi teratas (Top-K)", 1, 10, 5)
+
+    if st.button("🔮 Prediksi", type="primary"):
+        if not model_path:
+            st.error("Pilih atau masukkan path model terlebih dahulu.")
+        elif not label_mapping_path:
+            st.error("Pilih atau masukkan path label mapping terlebih dahulu.")
+        elif not infer_image:
+            st.warning("Upload gambar terlebih dahulu.")
+        else:
+            from PIL import Image
+            import io
+
+            try:
+                image = Image.open(io.BytesIO(infer_image.getvalue())).convert("RGB")
+                results = predict(model_path, label_mapping_path, image, top_k=top_k)
+
+                col_img, col_result = st.columns([1, 1])
+                with col_img:
+                    st.image(image, width=300)
+                with col_result:
+                    st.markdown("**Hasil Prediksi:**")
+                    for i, (class_name, prob) in enumerate(results, 1):
+                        st.markdown(f"{i}. **{class_name}**: {prob:.2%}")
+                        st.progress(prob)
+
+                st.success(f"Prediksi: **{results[0][0]}** ({results[0][1]:.2%})")
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
                 st.exception(e)

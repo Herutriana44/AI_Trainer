@@ -5,6 +5,7 @@ Menggunakan PyTorch dengan pre-trained models dari torchvision
 """
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -292,6 +293,16 @@ def train(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    # Export label_mapping.json sekali di awal
+    label_mapping = {
+        "class_to_idx": train_dataset.class_to_idx,
+        "idx_to_class": {str(v): k for k, v in train_dataset.class_to_idx.items()},
+    }
+    label_mapping_path = output_path / "label_mapping.json"
+    with open(label_mapping_path, "w", encoding="utf-8") as f:
+        json.dump(label_mapping, f, indent=2, ensure_ascii=False)
+    print(f"  ✓ Label mapping disimpan ke {label_mapping_path}")
+
     for epoch in range(epochs):
         epoch_start = time.time()
         callback.on_epoch_begin(epoch)
@@ -319,6 +330,7 @@ def train(
                 "num_classes": num_classes,
                 "class_to_idx": train_dataset.class_to_idx,
                 "model_name": model_name,
+                "image_size": image_size,
             }, save_path)
             print(f"  ✓ Model terbaik disimpan ke {save_path}")
 
@@ -329,6 +341,7 @@ def train(
                 "num_classes": num_classes,
                 "class_to_idx": train_dataset.class_to_idx,
                 "model_name": model_name,
+                "image_size": image_size,
             }, output_path / f"model_epoch_{epoch + 1}.pt")
 
     total_time = time.time() - callback.start_time
